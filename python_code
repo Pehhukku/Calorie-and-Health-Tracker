@@ -1,0 +1,190 @@
+import requests
+
+api_key = "nKcHARxrztR1XAnMbCs30OL8RPVw4ZiibfQ57bFC"
+
+def search_food(food_item):
+    url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={food_item}&api_key={api_key}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        foods = data.get('foods', [])
+        return foods[:5]
+    else:
+        print("Error accessing USDA API.")
+        return []
+
+def display_foods(foods):
+    print("\nTop Matches:")
+    for idx, food in enumerate(foods):
+        description = food.get('description')
+        nutrients = {n['nutrientName']: n['value'] for n in food.get('foodNutrients', [])}
+        calories = nutrients.get('Energy', 0)
+        protein = nutrients.get('Protein', 0)
+        fat = nutrients.get('Total lipid (fat)', 0)
+        carbs = nutrients.get('Carbohydrate, by difference', 0)
+        print(f"[{idx+1}] {description} - {calories} kcal (per 100g), {protein}g Protein, {fat}g Fat, {carbs}g Carbs")
+    print()
+
+def get_nutrients_from_selection(foods, selection, amount):
+    try:
+        food = foods[selection-1]
+        nutrients = {n['nutrientName']: n['value'] for n in food.get('foodNutrients', [])}
+        # Assume nutrient values are per 100g
+        factor = amount / 100
+        return {
+            'calories': nutrients.get('Energy', 0) * factor,
+            'protein': nutrients.get('Protein', 0) * factor,
+            'fat': nutrients.get('Total lipid (fat)', 0) * factor,
+            'carbs': nutrients.get('Carbohydrate, by difference', 0) * factor
+        }
+    except (IndexError, ValueError):
+        print("Invalid selection.")
+        return None
+
+def calculate_bmi(weight, height_cm):
+    height_m = height_cm / 100
+    return weight / (height_m ** 2)
+
+def calculate_bmr(sex, weight, height_cm, age):
+    if sex.lower() == 'male':
+        bmr = 10 * weight + 6.25 * height_cm - 5 * age + 5
+    else:
+        bmr = 10 * weight + 6.25 * height_cm - 5 * age - 161
+    return bmr
+  
+def calorie_needs(bmr, activity_level):
+    if activity_level.lower() == "sedentary":
+        return bmr *1.2
+    elif activity_level.lower() == "lightly active":
+        return bmr * 1.75
+    elif activity_level.lower() == "moderately active":
+        return bmr * 1.55
+    elif activity_level.lower() == "very active":
+        return bmr * 1.725
+    elif activity_level.lower() == "extremely active":
+        return bmr * 1.9
+    else:
+        return bmr
+    
+def calorie_counter():
+    print("\nWelcome to the your Calorie and Health Tracker!")
+
+    name = input("Enter your name: ").strip()
+    age = int(input("Enter your age: "))
+    sex = input("Enter your biological sex (male/female): ").strip().lower()
+    height = float(input("Enter your height (in cm): "))
+    weight = float(input("Enter your weight (in kg): "))
+    print("Activity Level Chart:")
+    print("sedentary - little or no exercise.")
+    print("lightly active - light exercise 3-5 times a week.")
+    print("moderately active - moderate exercise 3-5 times a week.")
+    print("very active - hard exercise 4-6 times a week.")
+    print("extremely active - hard daily exercise. ")
+    activity_level = input("Enter your activity level (sedentary, lightly active, moderate, very active, extremely active): ").strip().lower()
+    exercise_done = input("Did you do any exercise today? (yes/no): ").strip().lower()
+
+    bmi = calculate_bmi(weight, height)
+    print(f"\n{name}, your BMI is: {bmi:.2f}")
+    
+    bmr = calculate_bmr(sex, weight, height, age)
+    print(f"Your BMR (Basal Metabolic Rate) is: {bmr:.2f} kcal/day.")
+
+    needed_calories = calorie_needs(bmr, activity_level)
+    print(f"Based on your profile, your estimated daily calorie need is: {needed_calories} kcal.")
+
+    total_calories = 0
+    total_protein = 0
+    total_fat = 0
+    total_carbs = 0
+
+    while True:
+        food_item = input("\nEnter a food item (specify the food item (ex. ROASTED CHICKEN)) (or type 'done' to finish): ").strip()
+        if food_item.lower() == 'done':
+            break
+
+        foods = search_food(food_item)
+        if not foods:
+            continue
+
+        display_foods(foods)
+
+        try:
+            choice = int(input("Select the number of the food you ate: "))
+            amount = float(input("How many grams/ml did you consume? "))  # <<< Added Portion Input
+            nutrients = get_nutrients_from_selection(foods, choice, amount)
+            if nutrients:
+                total_calories += nutrients['calories']
+                total_protein += nutrients['protein']
+                total_fat += nutrients['fat']
+                total_carbs += nutrients['carbs']
+                print(f"Added: {nutrients['calories']:.2f} kcal, {nutrients['protein']:.2f}g Protein, {nutrients['fat']:.2f}g Fat, {nutrients['carbs']:.2f}g Carbs.")
+        except ValueError:
+            print("Please enter valid numbers.")
+
+
+    print("\n=== Daily Summary ===")
+    print(f"Calories Consumed: {total_calories:.2f} kcal")
+    print(f"Protein: {total_protein:.2f} g")
+    print(f"Fat: {total_fat:.2f} g")
+    print(f"Carbs: {total_carbs:.2f} g")
+
+
+    print("\n=== Recommendation ===")
+    if total_calories > needed_calories + 200:
+        print("You exceeded your daily calorie needs. Consider doing light exercise or adjusting food intake tomorrow.")
+    elif total_calories < needed_calories - 200:
+        print("You are under your calorie needs. Make sure you eat enough to support your activities.")
+    else:
+        print("Good job! You are within your daily calorie range.")
+
+    if exercise_done == "no":
+        print("Try to include at least a short walk or light physical activity today!")
+
+    if bmi < 18.5:
+        print("BMI Category: Underweight. Consider gaining weight healthily.")
+    elif 18.5 <= bmi < 24.9:
+        print("BMI Category: Normal weight. Keep it up!")
+    elif 25 <= bmi < 29.9:
+        print("BMI Category: Overweight. Watch your intake and stay active.")
+    else:
+        print("BMI Category: Obese. Consult a healthcare professional for personalized advice.")
+
+    save_option = input("\nWould you like to save today's results to a file? (yes/no): ").strip().lower()
+
+    if save_option == 'yes':
+        filename = input("Enter a filename: ").strip() + ".txt"
+        with open(filename, "w") as file:
+            file.write(f"Calorie Tracker Summary for {name}\n")
+            file.write(f"Age: {age} | Sex: {sex.capitalize()} | Height: {height} cm | Weight: {weight} kg\n")
+            file.write(f"BMI: {bmi:.2f}\n")
+            file.write(f"Activity Level: {activity_level.capitalize()}\n\n")
+            file.write(f"Calories Consumed: {total_calories:.2f} kcal\n")
+            file.write(f"Protein: {total_protein:.2f} g\n")
+            file.write(f"Fat: {total_fat:.2f} g\n")
+            file.write(f"Carbs: {total_carbs:.2f} g\n\n")
+        
+            file.write(f"Recommended Calorie Intake: {needed_calories} kcal\n")
+
+            if total_calories > needed_calories:
+                file.write("You exceeded your daily calorie needs. Consider doing light exercise or adjusting food intake tomorrow.\n")
+            elif total_calories < needed_calories:
+                file.write("You are under your calorie needs. Make sure you eat enough to support your activities.\n")
+            else:
+                file.write("Good job! You are within your daily calorie range.\n")
+        
+            if exercise_done == "no":
+                file.write("Note: No exercise today. Try to include physical activity!\n")
+        
+            if bmi < 18.5:
+                file.write("BMI Category: Underweight.\n")
+            elif 18.5 <= bmi < 24.9:
+                file.write("BMI Category: Normal weight.\n")
+            elif 25 <= bmi < 29.9:
+                file.write("BMI Category: Overweight.\n")
+            else:
+                file.write("BMI Category: Obese.\n")
+    
+        print(f"\n Your results have been saved to '{filename}'!")
+
+
+calorie_counter()
